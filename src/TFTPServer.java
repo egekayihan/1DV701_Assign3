@@ -1,7 +1,6 @@
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.net.SocketException;
+import java.io.IOException;
+import java.net.*;
+import java.nio.ByteBuffer;
 
 public class TFTPServer {
     public static final int TFTPPORT = 4970;
@@ -14,8 +13,9 @@ public class TFTPServer {
     public static final int OP_DAT = 3;
     public static final int OP_ACK = 4;
     public static final int OP_ERR = 5;
+    public static String mode = "";
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         if (args.length > 0)
         {
             System.err.printf("usage: java %s\n", TFTPServer.class.getCanonicalName());
@@ -31,7 +31,7 @@ public class TFTPServer {
         {e.printStackTrace();}
     }
 
-    private void start() throws SocketException
+    private void start() throws IOException
     {
         byte[] buf= new byte[BUFSIZE];
 
@@ -99,13 +99,15 @@ public class TFTPServer {
      * @param buf (where to store the read data)
      * @return socketAddress (the socket address of the client)
      */
-    private InetSocketAddress receiveFrom(DatagramSocket socket, byte[] buf)
-    {
+    private InetSocketAddress receiveFrom(DatagramSocket socket, byte[] buf) throws IOException {
         // Create datagram packet
+        DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
 
         // Receive packet
+        socket.receive(receivePacket);
 
         // Get client address and port from the packet
+        InetSocketAddress socketAddress = new InetSocketAddress(receivePacket.getAddress(),receivePacket.getPort());
 
         return socketAddress;
     }
@@ -120,8 +122,45 @@ public class TFTPServer {
     private int ParseRQ(byte[] buf, StringBuffer requestedFile)
     {
         // See "TFTP Formats" in TFTP specification for the RRQ/WRQ request contents
+        ByteBuffer bufWrap = ByteBuffer.wrap(buf);
+        short opcode = bufWrap.getShort();
 
-        return opcode;
+        int delimiter = -1;
+
+        for (int i = 2; i < buf.length; i++) {
+            if (buf[i] == 0) {
+                delimiter = i;
+                break;
+            }
+        }
+
+        if (delimiter == -1) {
+            System.err.println("Request Packet Corrupted. Exiting");
+            System.exit(1);
+        }
+
+        String fileName = new String(buf, 2, delimiter - 2);
+        requestedFile.append(fileName);
+
+        for (int i = delimiter+1; i < buf.length; i++) {
+            if (buf[i] == 0) {
+                String temp = new String(buf,delimiter+1,i - (delimiter + 1));
+                mode = temp;
+
+                if (temp.equalsIgnoreCase("octet")) {
+                    return opcode;
+                }
+
+                else {
+                    System.err.println("Unspecified mode. Exiting.");
+                    System.exit(1);
+                }
+            }
+        }
+
+        System.err.println("Delimiter not found. Exiting");
+        System.exit(1);
+        return 0;
     }
 
     /**
