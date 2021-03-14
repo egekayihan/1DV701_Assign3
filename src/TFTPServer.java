@@ -1,6 +1,10 @@
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class TFTPServer {
     public static final int TFTPPORT = 4970;
@@ -31,8 +35,7 @@ public class TFTPServer {
         {e.printStackTrace();}
     }
 
-    private void start() throws IOException
-    {
+    private void start() throws IOException {
         byte[] buf= new byte[BUFSIZE];
 
         // Create socket
@@ -86,8 +89,13 @@ public class TFTPServer {
                         }
                         sendSocket.close();
                     }
-                    catch (SocketException e)
-                    {e.printStackTrace();}
+                    catch (SocketException e) {
+                        e.printStackTrace();
+                    }
+
+                    catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
             }.start();
         }
@@ -119,8 +127,7 @@ public class TFTPServer {
      * @param requestedFile (name of file to read/write)
      * @return opcode (request type: RRQ or WRQ)
      */
-    private int ParseRQ(byte[] buf, StringBuffer requestedFile)
-    {
+    private int ParseRQ(byte[] buf, StringBuffer requestedFile) {
         // See "TFTP Formats" in TFTP specification for the RRQ/WRQ request contents
         ByteBuffer bufWrap = ByteBuffer.wrap(buf);
         short opcode = bufWrap.getShort();
@@ -170,22 +177,20 @@ public class TFTPServer {
      * @param requestedFile (name of file to read/write)
      * @param opcode (RRQ or WRQ)
      */
-    private void HandleRQ(DatagramSocket sendSocket, String requestedFile, int opcode)
-    {
-        if(opcode == OP_RRQ)
-        {
+    private void HandleRQ(DatagramSocket sendSocket, String requestedFile, int opcode) throws IOException {
+        if(opcode == OP_RRQ) {
             // See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
-            boolean result = send_DATA_receive_ACK(params);
+            boolean result = send_DATA_receive_ACK(requestedFile, opcode, sendSocket);
         }
-        else if (opcode == OP_WRQ)
-        {
-            boolean result = receive_DATA_send_ACK(params);
+
+        else if (opcode == OP_WRQ) {
+            boolean result = receive_DATA_send_ACK(requestedFile, opcode, sendSocket);
         }
-        else
-        {
+
+        else {
             System.err.println("Invalid request. Sending an error packet.");
             // See "TFTP Formats" in TFTP specification for the ERROR packet contents
-            send_ERR(params);
+            send_ERR(sendSocket, "Invalid request.", 0);
             return;
         }
     }
@@ -193,12 +198,163 @@ public class TFTPServer {
     /**
      To be implemented
      */
-    private boolean send_DATA_receive_ACK(params)
-    {return true;}
+    private boolean send_DATA_receive_ACK(String file, int block, DatagramSocket socket) {
+        boolean sizeCheck = false;
 
-    private boolean receive_DATA_send_ACK(params)
-    {return true;}
+        try {
+            String[] split = file.split("\0");
+            File fileName = new File(split[0]);
 
-    private void send_ERR(params)
-    {}
+            if (!fileName.exists()) {		 //Checking if the file exist
+                send_ERR(socket, "File not found!", 1);
+            }
+
+            else if (!fileName.canRead() && !fileName.canWrite()) {		//Checking write and read permissions
+                send_ERR(socket, "Unauthorized Access", 2);
+                System.out.println("test");
+            }
+
+            else {
+                FileInputStream input = new FileInputStream(fileName);
+
+                while (true) {
+                    byte[] buf = new byte[BUFSIZE - 4];
+                    int byteReader = input.read(buf);
+
+                    if (byteReader < 512) //buf equals 512 to leave space for the block # and op code
+                        sizeCheck = true;
+
+                    ByteBuffer buffedData = ByteBuffer.allocate(BUFSIZE);
+
+                    buffedData.putShort((short) OP_DAT);
+                    buffedData.putShort((short) block);
+                    buffedData.put(buf);
+
+                    try {
+                        //send packet
+                        DatagramPacket sendPacket = new DatagramPacket(buffedData.array(), byteReader + 4);
+                        socket.send(sendPacket);
+
+                        //receive acknowledgement
+                        ByteBuffer bufferedAck = ByteBuffer.allocate(OP_ACK);
+                        DatagramPacket receiveAck = new DatagramPacket(bufferedAck.array(), bufferedAck.array().length);
+                        socket.setSoTimeout(3000);  //Setting the timeout time
+                        socket.receive(receiveAck);
+
+                        ByteBuffer buffer = ByteBuffer.wrap(receiveAck.getData());
+                        short opcode = buffer.getShort();
+                        short ackBlock = buffer.getShort();
+
+                        if (opcode == OP_ERR) {
+                            send_ERR(socket,"Error packet sent", 0);
+                            break;
+                        }
+
+                        if (ackBlock == block) //checks that the ack and the data has the same block#
+                            block++;
+
+                        if (sizeCheck)
+                            break;
+
+                    }
+
+                    catch (SocketTimeoutException e) {
+                        System.out.println("Socket timeout");
+                    }
+                }
+            }
+        }
+
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+        return true;
+    }
+
+    private boolean receive_DATA_send_ACK(String file, int block, DatagramSocket socket) {
+
+        boolean sizeCheck = false;
+
+        String[] split = file.split("\0");
+        File fileName = new File(split[0]);
+
+        if(fileName.exists()){
+            try {
+                send_ERR(socket,  "File already exists" ,6);
+            }
+
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+
+        }
+
+        else {
+            try {
+                FileOutputStream output = new FileOutputStream(fileName);
+
+                ByteBuffer bufferedAck = ByteBuffer.allocate(OP_ACK);
+                bufferedAck.putShort((short) OP_ACK);
+                bufferedAck.putShort((short) block);
+
+                DatagramPacket packet = new DatagramPacket(bufferedAck.array(), bufferedAck.array().length);  //Sending ack
+                socket.send(packet);
+
+                while (true) {
+                    byte[] data = new byte[BUFSIZE];
+                    DatagramPacket dataReceive = new DatagramPacket(data, data.length);
+                    socket.receive(dataReceive);
+
+                    if (dataReceive.getData().length < 512) {
+                        sizeCheck = true;
+                    }
+
+                    ByteBuffer buffer = ByteBuffer.wrap(data);
+                    short opCode = buffer.getShort();
+
+                    if (opCode == OP_DAT) {
+                        output.write(Arrays.copyOfRange(dataReceive.getData(), 4, dataReceive.getLength()));
+                        ByteBuffer sendAck = ByteBuffer.allocate(OP_ACK);
+
+                        sendAck.putShort((short) OP_ACK);
+                        sendAck.putShort(buffer.getShort());
+
+                        DatagramPacket acknowledgment = new DatagramPacket(sendAck.array(), sendAck.array().length);
+                        socket.send(acknowledgment);
+                    }
+
+                    if (sizeCheck) {
+                        break;
+                    }
+                }
+
+                output.flush();
+                output.close();
+            }
+
+            catch (IOException e) {
+
+                try {
+                    send_ERR(socket, "Access violation", 2);
+                }
+
+                catch (IOException e1) {
+                    e1.printStackTrace();
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private void send_ERR(DatagramSocket socket, String error, int errorNumber) throws IOException {
+        ByteBuffer errorBuf = ByteBuffer.allocate(error.length() + OP_ERR);
+        errorBuf.putShort((short) OP_ERR);
+        errorBuf.putShort((short) errorNumber);
+        errorBuf.put(error.getBytes());
+
+        DatagramPacket sendError = new DatagramPacket(errorBuf.array(), errorBuf.array().length);
+
+        socket.send(sendError);
+    }
 }
