@@ -9,8 +9,9 @@ import java.util.Arrays;
 public class TFTPServer {
     public static final int TFTPPORT = 4970;
     public static final int BUFSIZE = 516;
-    public static final String READDIR = "/home/username/read/"; //custom address at your PC
-    public static final String WRITEDIR = "/home/username/write/"; //custom address at your PC
+    public static final String READDIR = "C:/read/"; //custom address at your PC
+    public static final String WRITEDIR = "C:/write/"; //custom address at your PC
+
     // OP codes
     public static final int OP_RRQ = 1;
     public static final int OP_WRQ = 2;
@@ -39,7 +40,7 @@ public class TFTPServer {
         byte[] buf= new byte[BUFSIZE];
 
         // Create socket
-        DatagramSocket socket= new DatagramSocket(null);
+        DatagramSocket socket = new DatagramSocket(null);
 
         // Create local bind point
         SocketAddress localBindPoint= new InetSocketAddress(TFTPPORT);
@@ -154,9 +155,9 @@ public class TFTPServer {
                 String temp = new String(buf,delimiter+1,i - (delimiter + 1));
                 mode = temp;
 
-                if (temp.equalsIgnoreCase("octet")) {
+                if (temp.equalsIgnoreCase("octet"))
                     return opcode;
-                }
+
 
                 else {
                     System.err.println("Unspecified mode. Exiting.");
@@ -205,9 +206,9 @@ public class TFTPServer {
             String[] split = file.split("\0");
             File fileName = new File(split[0]);
 
-            if (!fileName.exists()) {		 //Checking if the file exist
+            if (!fileName.exists()) 	 //Checking if the file exist
                 send_ERR(socket, "File not found!", 1);
-            }
+
 
             else if (!fileName.canRead() && !fileName.canWrite()) {		//Checking write and read permissions
                 send_ERR(socket, "Unauthorized Access", 2);
@@ -305,9 +306,9 @@ public class TFTPServer {
                     DatagramPacket dataReceive = new DatagramPacket(data, data.length);
                     socket.receive(dataReceive);
 
-                    if (dataReceive.getData().length < 512) {
+                    if (dataReceive.getData().length < 512)
                         sizeCheck = true;
-                    }
+
 
                     ByteBuffer buffer = ByteBuffer.wrap(data);
                     short opCode = buffer.getShort();
