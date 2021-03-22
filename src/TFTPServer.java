@@ -130,7 +130,36 @@ public class TFTPServer {
      */
     private int ParseRQ(byte[] buf, StringBuffer requestedFile) {
         // See "TFTP Formats" in TFTP specification for the RRQ/WRQ request contents
-        ByteBuffer bufWrap = ByteBuffer.wrap(buf);
+
+        /*ByteBuffer wrap = ByteBuffer.wrap(buf);
+        int opcode = wrap.getShort();
+        requestedFile.append(new String(buf, 2, buf.length - 2));
+
+        if (!requestedFile.toString().split("\0")[1].equals("octet")) {
+            System.out.println("Wrong Mode!");
+        }
+
+        return opcode;*/
+
+        StringBuilder stringBuilder = new StringBuilder();
+
+        for (int i = 2; i < buf.length; i++) {
+
+            if ((char) buf[i] == '\0') {
+                break;
+            } else {
+                stringBuilder.append((char) buf[i]);
+            }
+        }
+
+        requestedFile.append(stringBuilder.toString());
+        ByteBuffer wrap = ByteBuffer.wrap(buf);
+        int opcode = wrap.getShort();
+
+        return opcode;
+    }
+
+        /*ByteBuffer bufWrap = ByteBuffer.wrap(buf);
         short opcode = bufWrap.getShort();
 
         int delimiter = -1;
@@ -168,7 +197,7 @@ public class TFTPServer {
 
         System.err.println("Delimiter not found. Exiting");
         System.exit(1);
-        return 0;
+        return 0;*/
     }
 
     /**
