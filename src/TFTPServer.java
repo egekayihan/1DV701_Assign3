@@ -18,7 +18,7 @@ public class TFTPServer {
     public static final int OP_DAT = 3;
     public static final int OP_ACK = 4;
     public static final int OP_ERR = 5;
-    public static String mode = "";
+    //public static String mode = "";
 
     public static void main(String[] args) throws IOException {
         if (args.length > 0)
@@ -197,8 +197,8 @@ public class TFTPServer {
 
         System.err.println("Delimiter not found. Exiting");
         System.exit(1);
-        return 0;*/
-    }
+        return 0;
+    }*/
 
     /**
      * Handles RRQ and WRQ requests
@@ -303,7 +303,7 @@ public class TFTPServer {
 
     private boolean receive_DATA_send_ACK(String file, int block, DatagramSocket socket) {
 
-        boolean sizeCheck = false;
+        //boolean sizeCheck = false;
 
         String[] split = file.split("\0");
         File fileName = new File(split[0]);
@@ -330,33 +330,33 @@ public class TFTPServer {
                 DatagramPacket packet = new DatagramPacket(bufferedAck.array(), bufferedAck.array().length);  //Sending ack
                 socket.send(packet);
 
-                while (true) {
-                    byte[] data = new byte[BUFSIZE];
-                    DatagramPacket dataReceive = new DatagramPacket(data, data.length);
-                    socket.receive(dataReceive);
+                // while (true) {
+                byte[] data = new byte[BUFSIZE];
+                DatagramPacket dataReceive = new DatagramPacket(data, data.length);
+                socket.receive(dataReceive);
 
-                    if (dataReceive.getData().length < 512)
-                        sizeCheck = true;
+                // if (dataReceive.getData().length < 512)
+                //   sizeCheck = true;
 
 
-                    ByteBuffer buffer = ByteBuffer.wrap(data);
-                    short opCode = buffer.getShort();
+                ByteBuffer buffer = ByteBuffer.wrap(data);
+                short opCode = buffer.getShort();
 
-                    if (opCode == OP_DAT) {
-                        output.write(Arrays.copyOfRange(dataReceive.getData(), 4, dataReceive.getLength()));
-                        ByteBuffer sendAck = ByteBuffer.allocate(OP_ACK);
+                if (opCode == OP_DAT) {
+                    output.write(Arrays.copyOfRange(dataReceive.getData(), 4, dataReceive.getLength()));
+                    ByteBuffer sendAck = ByteBuffer.allocate(OP_ACK);
 
-                        sendAck.putShort((short) OP_ACK);
-                        sendAck.putShort(buffer.getShort());
+                    sendAck.putShort((short) OP_ACK);
+                    sendAck.putShort(buffer.getShort());
 
-                        DatagramPacket acknowledgment = new DatagramPacket(sendAck.array(), sendAck.array().length);
-                        socket.send(acknowledgment);
-                    }
-
-                    if (sizeCheck) {
-                        break;
-                    }
+                    DatagramPacket acknowledgment = new DatagramPacket(sendAck.array(), sendAck.array().length);
+                    socket.send(acknowledgment);
                 }
+
+                   /* if (sizeCheck) {
+                        break;
+                    }*/
+                //}
 
                 output.flush();
                 output.close();
