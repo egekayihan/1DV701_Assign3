@@ -18,7 +18,6 @@ public class TFTPServer {
     public static final int OP_DAT = 3;
     public static final int OP_ACK = 4;
     public static final int OP_ERR = 5;
-    //public static String mode = "";
 
     public static void main(String[] args) throws IOException {
         if (args.length > 0)
@@ -116,7 +115,6 @@ public class TFTPServer {
         // Receive packet
         socket.receive(receivePacket);
 
-
         // Get client address and port from the packet
         InetSocketAddress socketAddress = new InetSocketAddress(receivePacket.getAddress(),receivePacket.getPort());
 
@@ -173,7 +171,7 @@ public class TFTPServer {
      To be implemented
      */
     private boolean send_DATA_receive_ACK(String file, int block, DatagramSocket socket) {
-        boolean sizeCheck = false;
+        boolean check = false;
 
         try {
             String[] split = file.split("\0");
@@ -185,8 +183,8 @@ public class TFTPServer {
                 byte[] buf = new byte[512];
                 int byteReader = input.read(buf);
 
-                if (byteReader < 512) //buf equals 512 to leave space for the block # and op code
-                    sizeCheck = true;
+                if (byteReader < 512)
+                    check = true;
 
                 ByteBuffer buffedData = ByteBuffer.allocate(516);
 
@@ -199,18 +197,25 @@ public class TFTPServer {
                     DatagramPacket sendPacket = new DatagramPacket(buffedData.array(), byteReader + 4);
                     socket.send(sendPacket);
 
-                    //receive acknowledgement
+                    //receive ACK
                     ByteBuffer bufferedAck = ByteBuffer.allocate(OP_ACK);
                     DatagramPacket receiveAck = new DatagramPacket(bufferedAck.array(), bufferedAck.array().length);
                     socket.receive(receiveAck);
 
+
                     ByteBuffer buffer = ByteBuffer.wrap(receiveAck.getData());
+                    short opcode = buffer.getShort();
                     short ackBlock = buffer.getShort();
 
-                    if (ackBlock == block) //checks that the ack and the data has the same block#
+                    if (opcode == OP_ERR) {
+                        send_ERR(socket,"Error packet sent", 0);
+                        break;
+                    }
+
+                    if (ackBlock == block)
                         block++;
 
-                    if (sizeCheck)
+                    if (check)
                         break;
 
                 }
@@ -229,7 +234,8 @@ public class TFTPServer {
     }
 
     private boolean receive_DATA_send_ACK(String file, int block, DatagramSocket socket) {
-        boolean sizeCheck = false;
+
+        boolean check = false;
 
         String[] split = file.split("\0");
         File fileName = new File(split[0]);
@@ -245,31 +251,31 @@ public class TFTPServer {
             socket.send(packet);
 
             while (true) {
-            byte[] data = new byte[BUFSIZE];
-            DatagramPacket dataReceive = new DatagramPacket(data, data.length);
-            socket.receive(dataReceive);
+                byte[] data = new byte[BUFSIZE];
+                DatagramPacket dataReceive = new DatagramPacket(data, data.length);
+                socket.receive(dataReceive);
 
-            if (dataReceive.getData().length < 512)
-              sizeCheck = true;
+                if (dataReceive.getData().length < 512)
+                    check = true;
 
 
-            ByteBuffer buffer = ByteBuffer.wrap(data);
-            short opCode = buffer.getShort();
+                ByteBuffer buffer = ByteBuffer.wrap(data);
+                short opCode = buffer.getShort();
 
-            if (opCode == OP_DAT) {
-                output.write(Arrays.copyOfRange(dataReceive.getData(), 4, dataReceive.getLength()));
-                ByteBuffer sendAck = ByteBuffer.allocate(OP_ACK);
+                if (opCode == OP_DAT) {
+                    output.write(Arrays.copyOfRange(dataReceive.getData(), 4, dataReceive.getLength()));
+                    ByteBuffer sendAck = ByteBuffer.allocate(OP_ACK);
 
-                sendAck.putShort((short) OP_ACK);
-                sendAck.putShort(buffer.getShort());
+                    sendAck.putShort((short) OP_ACK);
+                    sendAck.putShort(buffer.getShort());
 
-                DatagramPacket acknowledgment = new DatagramPacket(sendAck.array(), sendAck.array().length);
-                socket.send(acknowledgment);
-            }
+                    DatagramPacket acknowledgment = new DatagramPacket(sendAck.array(), sendAck.array().length);
+                    socket.send(acknowledgment);
+                }
 
-                    if (sizeCheck) {
-                        break;
-                    }
+                if (check) {
+                    break;
+                }
             }
 
             output.flush();
@@ -284,5 +290,14 @@ public class TFTPServer {
         return true;
     }
 
-    //private void send_ERR(){}
+    private void send_ERR(DatagramSocket socket, String error, int errorNumber) throws IOException {
+        ByteBuffer errorBuf = ByteBuffer.allocate(error.length() + OP_ERR);
+        errorBuf.putShort((short) OP_ERR);
+        errorBuf.putShort((short) errorNumber);
+        errorBuf.put(error.getBytes());
+
+        DatagramPacket sendError = new DatagramPacket(errorBuf.array(), errorBuf.array().length);
+
+        socket.send(sendError);
+    }
 }
